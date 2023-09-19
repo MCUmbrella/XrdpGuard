@@ -38,14 +38,14 @@ public interface FirewallManager
      * @param ip 要检查的IP。
      * @return 如果IP已被封禁，返回true，否则返回false。
      */
-    boolean checkBanIpv4(String ip);
+    boolean isBannedIpv4(String ip);
 
     /**
      * 检查IPv6地址是否已被封禁。
      * @param ip 要检查的IP。
      * @return 如果IP已被封禁，返回true，否则返回false。
      */
-    boolean checkBanIpv6(String ip);
+    boolean isBannedIpv6(String ip);
 
     /**
      * 应用对防火墙规则的更改。

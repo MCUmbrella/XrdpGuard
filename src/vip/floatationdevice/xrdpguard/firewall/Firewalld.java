@@ -20,21 +20,22 @@ public class Firewalld implements FirewallManager
     @Override
     public boolean banIpv4(String ip)
     {
-        return system("firewall-cmd --add-rich-rule='rule family=ipv4 source address=" + ip + " drop'");
+        return system("firewall-cmd --add-rich-rule='rule family=ipv4 source address=" + ip + " drop' --permanent");
     }
 
     @Override
     public boolean banIpv6(String ip)
     {
-        if(ip.startsWith("::ffff:") && isIpv4(ip.substring(7))) // 将嵌入IPv6的IPv4地址处理后交给处理IPv4的函数
+        // 如果是嵌入IPv6的IPv4地址（如::ffff:217.76.50.132），提取并交给处理IPv4的函数
+        if(ip.startsWith("::ffff:") && isIpv4(ip.substring(7)))
             return banIpv4(ip.substring(7));
-        return system("firewall-cmd --add-rich-rule='rule family=ipv6 source address=" + ip + " drop'");
+        return system("firewall-cmd --add-rich-rule='rule family=ipv6 source address=" + ip + " drop' --permanent");
     }
 
     @Override
     public boolean unbanIpv4(String ip)
     {
-        return system("firewall-cmd --remove-rich-rule='rule family=ipv4 source address=" + ip + "'");
+        return system("firewall-cmd --remove-rich-rule='rule family=ipv4 source address=" + ip + " drop' --permanent");
     }
 
     @Override
@@ -42,21 +43,21 @@ public class Firewalld implements FirewallManager
     {
         if(ip.startsWith("::ffff:") && isIpv4(ip.substring(7)))
             return unbanIpv4(ip.substring(7));
-        return system("firewall-cmd --remove-rich-rule='rule family=ipv6 source address=" + ip + "'");
+        return system("firewall-cmd --remove-rich-rule='rule family=ipv6 source address=" + ip + " drop' --permanent");
     }
 
     @Override
-    public boolean checkBanIpv4(String ip)
+    public boolean isBannedIpv4(String ip)
     {
-        return system("firewall-cmd --query-rich-rule='rule family=ipv4 source address=" + ip + "'");
+        return system("firewall-cmd --query-rich-rule='rule family=ipv4 source address=" + ip + " drop'");
     }
 
     @Override
-    public boolean checkBanIpv6(String ip)
+    public boolean isBannedIpv6(String ip)
     {
         if(ip.startsWith("::ffff:") && isIpv4(ip.substring(7)))
-            return checkBanIpv4(ip.substring(7));
-        return system("firewall-cmd --query-rich-rule='rule family=ipv6 source address=" + ip + "'");
+            return isBannedIpv4(ip.substring(7));
+        return system("firewall-cmd --query-rich-rule='rule family=ipv6 source address=" + ip + " drop'");
     }
 
     @Override

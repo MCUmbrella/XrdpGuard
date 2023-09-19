@@ -1,7 +1,6 @@
 package vip.floatationdevice.xrdpguard;
 
 import vip.floatationdevice.xrdpguard.firewall.FirewallManager;
-import vip.floatationdevice.xrdpguard.firewall.Firewalld;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
@@ -25,24 +24,33 @@ public class XrdpGuard
     private static long periodMs = 1 * 60 * 1000; // 默认时间跨度：1分钟
     private static int maxFails = 2; // 默认最多失败次数：2次
     private static FirewallManager fw;
+    private static String fwClassPath = "vip.floatationdevice.xrdpguard.firewall.Firewalld";
     private static boolean flDebug = false;
-    private static boolean flLoop = false;
+    private static boolean flDryRun = false;
 
     public static void main(String[] args) throws Exception
     {
         // 解析命令行参数（如果存在）
-        // 带参数用法：XrdpGuard <日志路径> <时间跨度> <最大失败次数> [--debug]
-        if(args.length >= 3)
+        // 带参数用法：XrdpGuard [--log=日志路径] [--period=时间跨度] [--maxFail=最大失败次数] [--impl=防火墙管理类路径] [--debug] [--dryrun]
+        for(String a : args)
         {
-            logPath = args[0];
-            periodMs = Long.parseLong(args[1]);
-            maxFails = Integer.parseInt(args[2]);
-            if(args.length > 3)
-                for(int i = 3; i != args.length; i++)
-                    if(args[i].equals("--debug"))
-                        flDebug = true;
-                    else if(args[i].equals("--loop"))
-                        flLoop = true;
+            if(a.equals("--help"))
+            {
+                System.out.println("XrdpGuard [--log={}] [--period={}] [--maxFail={}] [--impl={}] [--debug] [--dryrun]");
+                System.exit(0);
+            }
+            else if(a.startsWith("--log="))
+                logPath = a.substring(6);
+            else if(a.startsWith("--period="))
+                periodMs = Integer.parseInt(a.substring(9));
+            else if(a.startsWith("--maxFail="))
+                maxFails = Integer.parseInt(a.substring(10));
+            else if(a.startsWith("--impl="))
+                fwClassPath = a.substring(7);
+            else if(a.equals("--debug"))
+                flDebug = true;
+            else if(a.startsWith("--dryrun"))
+                flDryRun = true;
         }
         // 准备工作
         ConsoleHandler consoleHandler = new ConsoleHandler();
@@ -56,8 +64,8 @@ public class XrdpGuard
             l.setLevel(Level.ALL);
             l.config("Enabled debug output");
         }
-        l.config("Configurations:\n\tLog file path: " + logPath + "\n\tTime period (ms): " + periodMs + "\n\tMax fail count: " + maxFails);
-        fw = new Firewalld();
+        l.config("Configurations:\n\tLog file: " + logPath + "\n\tTime period (ms): " + periodMs + "\n\tMax fail count: " + maxFails + "\n\tFirewall manager: " + fwClassPath);
+        fw = (FirewallManager) Class.forName(fwClassPath).newInstance();
         l.fine("Reading " + logPath);
         BufferedReader br = new BufferedReader(new FileReader(logPath), 32768);
         String line;
@@ -79,11 +87,14 @@ public class XrdpGuard
                 sb.append(line, 1, 18).append(' ').append(line, line.indexOf("from ") + 5, line.indexOf(" port"));
                 filteredLoginTimeAddr.add(sb.toString());
             }
-            else if(line.contains("SSL_accept: I/O error")) // 客户端登录失败标志
+            else if(line.contains("] login fail") ||
+                    line.contains("SSL_accept: I/O error") ||
+                    line.contains("libxrdp_force_read: header read error")
+            ) // 客户端登录失败标志
             {
                 filteredLoginResult.add(true);
             }
-            else if(line.contains("] login successful")) // 客户端登录成功标志
+            else if(line.contains("] login succ")) // 客户端登录成功标志
             {
                 filteredLoginResult.add(false);
             }
@@ -106,13 +117,8 @@ public class XrdpGuard
                     filteredLoginResult.get(i)
             ));
         }
-
-//        // 调试信息
-//        sb.setLength(0);
-//        sb.append("Logins:\n\t");
-//        for(Login l : logins)
-//            sb.append(l.toString()).append("\n\t");
-//        l.info(sb.toString());
+        filteredLoginTimeAddr.clear();
+        filteredLoginResult.clear();
 
         // 创建一个Map来统计每个IP地址的失败登录次数
         HashMap<String, Integer> ipFailCounts = new HashMap<>();
@@ -127,36 +133,56 @@ public class XrdpGuard
             if(timeDiff <= periodMs && login.fail)
                 ipFailCounts.put(login.addr, ipFailCounts.getOrDefault(login.addr, 0) + 1);
         }
+        logins.clear();
         // 找到登录失败次数达到指定次数或更多的IP地址
         ArrayList<String> suspiciousIPs = new ArrayList<>();
         for(Map.Entry<String, Integer> entry : ipFailCounts.entrySet())
             if(entry.getValue() >= maxFails)
                 suspiciousIPs.add(entry.getKey());
+        ipFailCounts.clear();
         // 输出符合条件的IP地址列表
         l.info("Suspicious IPs (" + suspiciousIPs.size() + "): " + suspiciousIPs);
+
+        if(flDryRun)
+        {
+            l.info("Dry run completed");
+            System.exit(0);
+        }
+
         // 使用firewall-cmd命令添加富规则，丢弃来自所有此IP的连接
         // 注意：IP可能同时包含IPv4和IPv6，需要分别处理
+        int bannedIpCount = 0;
         for(String ip : suspiciousIPs)
         {
             if(ip.indexOf(':') == -1) // IPv4
             {
-                l.info("Ban IPv4: " + ip);
+                if(fw.isBannedIpv4(ip))
+                    continue;
+                l.info("Ban " + ip);
                 if(fw.banIpv4(ip))
+                {
                     l.info("Banned IPv4 address: " + ip);
+                    ++bannedIpCount;
+                }
                 else
                     l.warning("Failed to ban IPv4 address: " + ip);
             }
             else // IPv6
             {
-                l.info("Ban IPv6: " + ip);
+                if(fw.isBannedIpv6(ip))
+                    continue;
+                l.info("Ban " + ip);
                 if(fw.banIpv6(ip))
+                {
                     l.info("Banned IPv6 address: " + ip);
+                    ++bannedIpCount;
+                }
                 else
                     l.warning("Failed to ban IPv6 address: " + ip);
             }
         }
         // 重载防火墙规则
-        if(suspiciousIPs.size() != 0)
+        if(bannedIpCount != 0)
         {
             if(fw.apply())
                 l.info("Firewall rule changes applied");
