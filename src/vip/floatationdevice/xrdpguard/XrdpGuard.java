@@ -5,7 +5,6 @@ import vip.floatationdevice.xrdpguard.firewall.Firewalld;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
-import java.io.InputStreamReader;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -25,13 +24,8 @@ public class XrdpGuard
     private static String logPath = "/var/log/xrdp.log"; // 默认日志路径
     private static long periodMs = 1 * 60 * 1000; // 默认时间跨度：1分钟
     private static int maxFails = 2; // 默认最多失败次数：2次
-    // 封禁IP的系统命令
-    // 默认命令：使用firewall-cmd命令添加富规则，丢弃来自该地址的连接
-    private static String banIpv4Cmd = "/sbin/banip4.sh %BAN_IP_ADDR%";
-    private static String banIpv6Cmd = "/sbin/banip6.sh %BAN_IP_ADDR%";
-    private static String firewallApplyCmd = "/usr/bin/firewall-cmd --reload";
     private static FirewallManager fw;
-    private static boolean flDebug = true;
+    private static boolean flDebug = false;
     private static boolean flLoop = false;
 
     public static void main(String[] args) throws Exception
@@ -144,92 +138,31 @@ public class XrdpGuard
         // 注意：IP可能同时包含IPv4和IPv6，需要分别处理
         for(String ip : suspiciousIPs)
         {
-            Process proc;
-            String cmd;
-            int exitCode;
-            BufferedReader stdout;
-            BufferedReader stderr;
-            String output;
             if(ip.indexOf(':') == -1) // IPv4
             {
-                // 使用firewall-cmd命令添加富规则，丢弃来自该地址的连接
-                cmd = banIpv4Cmd.replace("%BAN_IP_ADDR%", ip);
-                l.fine("[cmd] Executing: " + cmd);
-                // 执行命令
-                try
-                {
-                    proc = Runtime.getRuntime().exec(cmd);
-                    stdout = new BufferedReader(new InputStreamReader(proc.getInputStream()));
-                    stderr = new BufferedReader(new InputStreamReader(proc.getErrorStream()));
-                    while((output = stdout.readLine()) != null)
-                        l.fine("[cmd stdout] " + output);
-                    while((output = stderr.readLine()) != null)
-                        l.fine("[cmd stderr] " + output);
-                    exitCode = proc.waitFor();
-                    l.fine("[cmd] Command exited with code " + exitCode);
-                    if(exitCode == 0)
-                        l.info("Banned IPv4 address: " + ip);
-                    else
-                        l.warning("Failed to ban IPv4 address: " + ip);
-                }
-                catch(Exception e)
-                {
-                    l.severe("Error occurred while executing command " + cmd);
-                    l.severe(e.toString());
-                }
+                l.info("Ban IPv4: " + ip);
+                if(fw.banIpv4(ip))
+                    l.info("Banned IPv4 address: " + ip);
+                else
+                    l.warning("Failed to ban IPv4 address: " + ip);
             }
             else // IPv6
             {
-                cmd = banIpv6Cmd.replace("%BAN_IP_ADDR%", ip);
-                l.fine("[cmd] Executing: " + cmd);
-                try
-                {
-                    proc = Runtime.getRuntime().exec(cmd);
-                    stdout = new BufferedReader(new InputStreamReader(proc.getInputStream()));
-                    stderr = new BufferedReader(new InputStreamReader(proc.getErrorStream()));
-                    while((output = stdout.readLine()) != null)
-                        l.fine("[cmd stdout] " + output);
-                    while((output = stderr.readLine()) != null)
-                        l.fine("[cmd stderr] " + output);
-                    exitCode = proc.waitFor();
-                    l.fine("[cmd] Command exited with code " + exitCode);
-                    if(exitCode == 0)
-                        l.info("Banned IPv6 address: " + ip);
-                    else
-                        l.warning("Failed to ban IPv6 address: " + ip);
-                }
-                catch(Exception e)
-                {
-                    l.severe("Error occurred while executing command " + cmd);
-                    l.severe(e.toString());
-                }
+                l.info("Ban IPv6: " + ip);
+                if(fw.banIpv6(ip))
+                    l.info("Banned IPv6 address: " + ip);
+                else
+                    l.warning("Failed to ban IPv6 address: " + ip);
             }
         }
         // 重载防火墙规则
         if(suspiciousIPs.size() != 0)
-            try
-            {
-                l.fine("[cmd] Executing: " + firewallApplyCmd);
-                Process proc = Runtime.getRuntime().exec(firewallApplyCmd);
-                BufferedReader stdout = new BufferedReader(new InputStreamReader(proc.getInputStream()));
-                BufferedReader stderr = new BufferedReader(new InputStreamReader(proc.getErrorStream()));
-                String output;
-                while((output = stdout.readLine()) != null)
-                    l.fine("[cmd stdout] " + output);
-                while((output = stderr.readLine()) != null)
-                    l.fine("[cmd stderr] " + output);
-                int exitCode = proc.waitFor();
-                l.fine("[cmd] Command exited with code " + exitCode);
-                if(exitCode == 0)
-                    l.info("Firewall rules applied");
-                else
-                    l.warning("Failed to apply firewall rules");
-            }
-            catch(Exception e)
-            {
-                l.severe("Error occurred while executing command " + firewallApplyCmd);
-                l.severe(e.toString());
-            }
+        {
+            if(fw.apply())
+                l.info("Firewall rule changes applied");
+            else
+                l.warning("Failed to apply firewall rule changes");
+        }
         l.info("XRDPGuard is exiting");
     }
 }
