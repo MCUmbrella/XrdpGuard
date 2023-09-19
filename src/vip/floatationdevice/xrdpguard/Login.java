@@ -1,9 +1,11 @@
 package vip.floatationdevice.xrdpguard;
 
+import java.text.SimpleDateFormat;
 import java.util.Date;
 
 public class Login
 {
+    private static final SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
     public final Date time;
     public final String addr;
     public final boolean fail;
@@ -18,6 +20,6 @@ public class Login
     @Override
     public String toString()
     {
-        return "[" + time + "] [" + addr + "]: " + (fail ? "FAIL" : "SUCCESS");
+        return sdf.format(time) + "\t" + addr + "\t" + (fail ? "FAIL" : "SUCCESS");
     }
 }

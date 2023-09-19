@@ -18,7 +18,7 @@ public class Firewalld implements FirewallManager
 
     public Firewalld()
     {
-        l.config("Firewall manager implementation: " + getClass().getName());
+        l.fine(getClass().getName() + " initialized");
     }
 
     @Override

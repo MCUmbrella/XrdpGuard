@@ -15,18 +15,20 @@ import java.util.logging.Logger;
 
 public class XrdpGuard
 {
+    private static final String VERSION = "0.1.0";
     private static final Logger l = Logger.getLogger("XrdpGuard");
     private static final ArrayList<String> filteredLoginTimeAddr = new ArrayList<>();
     private static final ArrayList<Boolean> filteredLoginResult = new ArrayList<>();
     private static final ArrayList<Login> logins = new ArrayList<>();
     private static final SimpleDateFormat logDateFormat = new SimpleDateFormat("yyyyMMdd-HH:mm:ss");
     private static String logPath = "/var/log/xrdp.log"; // 默认日志路径
-    private static long periodMs = 1 * 60 * 1000; // 默认时间跨度：1分钟
-    private static int maxFails = 2; // 默认最多失败次数：2次
+    private static long periodMs = 10 * 60 * 1000; // 默认时间跨度：10分钟
+    private static int maxFails = 3; // 默认最多失败次数：3次
     private static FirewallManager fw;
     private static String fwClassPath = "vip.floatationdevice.xrdpguard.firewall.Firewalld";
     private static boolean flDebug = false;
     private static boolean flDryRun = false;
+    private static boolean flExportMode = false;
 
     public static void main(String[] args) throws Exception
     {
@@ -36,13 +38,13 @@ public class XrdpGuard
         {
             if(a.equals("--help"))
             {
-                System.out.println("XrdpGuard [--log={}] [--period={}] [--maxFail={}] [--impl={}] [--debug] [--dryrun]");
+                System.out.println("XrdpGuard [--log={}] [--period={}] [--maxFail={}] [--impl={}] [--debug] [--dryrun] [--export]");
                 System.exit(0);
             }
             else if(a.startsWith("--log="))
                 logPath = a.substring(6);
             else if(a.startsWith("--period="))
-                periodMs = Integer.parseInt(a.substring(9));
+                periodMs = Long.parseLong(a.substring(9));
             else if(a.startsWith("--maxFail="))
                 maxFails = Integer.parseInt(a.substring(10));
             else if(a.startsWith("--impl="))
@@ -51,13 +53,15 @@ public class XrdpGuard
                 flDebug = true;
             else if(a.startsWith("--dryrun"))
                 flDryRun = true;
+            else if(a.startsWith("--export"))
+                flExportMode = true;
         }
         // 准备工作
         ConsoleHandler consoleHandler = new ConsoleHandler();
         consoleHandler.setFormatter(new LoggerFormatter());
         l.addHandler(consoleHandler);
         l.setUseParentHandlers(false);
-        l.info("XRDPGuard is starting");
+        l.info("XRDPGuard version " + VERSION);
         if(flDebug)
         {
             consoleHandler.setLevel(Level.ALL);
@@ -101,7 +105,7 @@ public class XrdpGuard
         }
         // 检查客户端连入次数和登录结果显示次数是否相同。如果不同，程序会报错并退出来避免错位导致的误判
         if(filteredLoginResult.size() == filteredLoginTimeAddr.size())
-            l.info("Read available logins: " + filteredLoginTimeAddr.size());
+            l.fine("Read available logins: " + filteredLoginTimeAddr.size());
         else
         {
             l.severe("ArrayList entry count mismatch! filteredLoginTimeAddr.size(): " + filteredLoginTimeAddr.size() + ", filteredLoginResult.size(): " + filteredLoginResult.size());
@@ -119,6 +123,18 @@ public class XrdpGuard
         }
         filteredLoginTimeAddr.clear();
         filteredLoginResult.clear();
+
+        // 导出模式：将从日志中提取出的登录记录打印到标准输出
+        if(flExportMode)
+        {
+            l.info("Exporting login records to stdout");
+            sb.setLength(0);
+            for(Login login : logins)
+                sb.append(login.toString()).append('\n');
+            System.out.print(sb);
+            l.info("Exported " + logins.size() + " records");
+            System.exit(0);
+        }
 
         // 创建一个Map来统计每个IP地址的失败登录次数
         HashMap<String, Integer> ipFailCounts = new HashMap<>();
@@ -158,7 +174,7 @@ public class XrdpGuard
             {
                 if(fw.isBannedIpv4(ip))
                     continue;
-                l.info("Ban " + ip);
+                l.fine("Ban IPv4 " + ip);
                 if(fw.banIpv4(ip))
                 {
                     l.info("Banned IPv4 address: " + ip);
@@ -171,7 +187,7 @@ public class XrdpGuard
             {
                 if(fw.isBannedIpv6(ip))
                     continue;
-                l.info("Ban " + ip);
+                l.fine("Ban IPv6 " + ip);
                 if(fw.banIpv6(ip))
                 {
                     l.info("Banned IPv6 address: " + ip);
@@ -189,6 +205,6 @@ public class XrdpGuard
             else
                 l.warning("Failed to apply firewall rule changes");
         }
-        l.info("XRDPGuard is exiting");
+        l.info("Completed: " + bannedIpCount + " IP(s) banned");
     }
 }
