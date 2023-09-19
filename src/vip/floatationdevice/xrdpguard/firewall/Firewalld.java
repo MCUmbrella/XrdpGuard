@@ -4,10 +4,13 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 public class Firewalld implements FirewallManager
 {
     private static final Logger l = Logger.getLogger("XrdpGuard");
+    private static final Pattern ipv4Pattern = Pattern.compile("^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$");
+
 
     public Firewalld()
     {
@@ -17,50 +20,49 @@ public class Firewalld implements FirewallManager
     @Override
     public boolean banIpv4(String ip)
     {
-        String command = "firewall-cmd --add-rich-rule='rule family=ipv4 source address=" + ip + " drop'";
-        return system(command);
+        return system("firewall-cmd --add-rich-rule='rule family=ipv4 source address=" + ip + " drop'");
     }
 
     @Override
     public boolean banIpv6(String ip)
     {
-        String command = "firewall-cmd --add-rich-rule='rule family=ipv6 source address=" + ip + " drop'";
-        return system(command);
+        if(ip.startsWith("::ffff:") && isIpv4(ip.substring(7))) // 将嵌入IPv6的IPv4地址处理后交给处理IPv4的函数
+            return banIpv4(ip.substring(7));
+        return system("firewall-cmd --add-rich-rule='rule family=ipv6 source address=" + ip + " drop'");
     }
 
     @Override
     public boolean unbanIpv4(String ip)
     {
-        String command = "firewall-cmd --remove-rich-rule='rule family=ipv4 source address=" + ip + "'";
-        return system(command);
+        return system("firewall-cmd --remove-rich-rule='rule family=ipv4 source address=" + ip + "'");
     }
 
     @Override
     public boolean unbanIpv6(String ip)
     {
-        String command = "firewall-cmd --remove-rich-rule='rule family=ipv6 source address=" + ip + "'";
-        return system(command);
+        if(ip.startsWith("::ffff:") && isIpv4(ip.substring(7)))
+            return unbanIpv4(ip.substring(7));
+        return system("firewall-cmd --remove-rich-rule='rule family=ipv6 source address=" + ip + "'");
     }
 
     @Override
     public boolean checkBanIpv4(String ip)
     {
-        String command = "firewall-cmd --query-rich-rule='rule family=ipv4 source address=" + ip + "'";
-        return system(command);
+        return system("firewall-cmd --query-rich-rule='rule family=ipv4 source address=" + ip + "'");
     }
 
     @Override
     public boolean checkBanIpv6(String ip)
     {
-        String command = "firewall-cmd --query-rich-rule='rule family=ipv6 source address=" + ip + "'";
-        return system(command);
+        if(ip.startsWith("::ffff:") && isIpv4(ip.substring(7)))
+            return checkBanIpv4(ip.substring(7));
+        return system("firewall-cmd --query-rich-rule='rule family=ipv6 source address=" + ip + "'");
     }
 
     @Override
     public boolean apply()
     {
-        String command = "firewall-cmd --reload";
-        return system(command);
+        return system("firewall-cmd --reload");
     }
 
     /**
@@ -92,5 +94,10 @@ public class Firewalld implements FirewallManager
             e.printStackTrace();
             return false;
         }
+    }
+
+    private static boolean isIpv4(String s)
+    {
+        return ipv4Pattern.matcher(s).matches();
     }
 }
