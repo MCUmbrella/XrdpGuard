@@ -6,6 +6,10 @@ import java.io.InputStreamReader;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
+/**
+ * 基于firewalld和执行系统命令实现FirewallManager接口。
+ * 使用firewall-cmd命令进行富规则操作，通过丢弃指定IP数据包的方式来实现IP封禁。
+ */
 public class Firewalld implements FirewallManager
 {
     private static final Logger l = Logger.getLogger("XrdpGuard");

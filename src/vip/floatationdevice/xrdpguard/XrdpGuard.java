@@ -149,7 +149,7 @@ public class XrdpGuard
             System.exit(0);
         }
 
-        // 使用firewall-cmd命令添加富规则，丢弃来自所有此IP的连接
+        // 使用实现FirewallManager接口的类来封禁IP
         // 注意：IP可能同时包含IPv4和IPv6，需要分别处理
         int bannedIpCount = 0;
         for(String ip : suspiciousIPs)
