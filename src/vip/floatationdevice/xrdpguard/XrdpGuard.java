@@ -31,14 +31,14 @@ public class XrdpGuard
     public static void main(String[] args) throws Exception
     {
         // 解析命令行参数（如果存在）
-        // 带参数用法：XrdpGuard <日志路径> <时间跨度> <最大失败次数>
+        // 带参数用法：XrdpGuard <日志路径> <时间跨度> <最大失败次数> [--debug]
         if(args.length >= 3)
         {
             logPath = args[0];
             periodMs = Long.parseLong(args[1]);
             maxFails = Integer.parseInt(args[2]);
             if(args.length > 3)
-                for(int i = 4; i != args.length; i++)
+                for(int i = 3; i != args.length; i++)
                     if(args[i].equals("--debug"))
                         flDebug = true;
                     else if(args[i].equals("--loop"))
