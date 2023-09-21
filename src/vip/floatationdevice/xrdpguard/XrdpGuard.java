@@ -21,12 +21,14 @@ public class XrdpGuard
     private static boolean flDebug = false;
     private static boolean flDryRun = false;
     private static boolean flExportMode = false;
+    private static long loopMs = -1; //TODO
 
     public static void main(String[] args)
     {
         // 准备工作
         Logger l;
         FirewallManager fw;
+        Set<String> whitelist = null;
         List<LoginRecord> logins;
         List<String> suspiciousIPs;
         int bannedIpCount = 0;
@@ -43,6 +45,18 @@ public class XrdpGuard
         catch(InstantiationException | IllegalAccessException | ClassNotFoundException e)
         {
             throw new RuntimeException("Failed to create instance of \"" + fwClassPath + "\": " + e, e);
+        }
+
+        // 读取IP白名单（xrdpguard/whitelist.txt）
+        l.fine("Reading whitelist");
+        try
+        {
+            whitelist = loadWhitelist();
+            l.fine("Whitelist (" + whitelist.size() + "): " + whitelist);
+        }
+        catch(Exception e)
+        {
+            l.warning("Failed to load whitelist: " + e);
         }
 
         // 开始逐行读取日志
@@ -80,6 +94,8 @@ public class XrdpGuard
         // 注意：IP可能同时包含IPv4和IPv6，需要分别处理
         for(String ip : suspiciousIPs)
         {
+            if(whitelist != null && whitelist.contains(ip))
+                continue;
             if(ip.indexOf(':') == -1) // IPv4
             {
                 if(fw.isBannedIpv4(ip))
@@ -166,6 +182,16 @@ public class XrdpGuard
             l.setLevel(Level.ALL);
         }
         return l;
+    }
+
+    private static Set<String> loadWhitelist() throws IOException
+    {
+        Set<String> whitelist = new HashSet<>();
+        BufferedReader br = new BufferedReader(new FileReader(getWhitelistFile()));
+        String line;
+        while((line = br.readLine()) != null)
+            whitelist.add(line);
+        return whitelist;
     }
 
     private static List<LoginRecord> loadXrdpLog(String path)

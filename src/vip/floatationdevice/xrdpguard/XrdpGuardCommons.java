@@ -81,31 +81,23 @@ public class XrdpGuardCommons
 
     public static boolean isIpv4(String s){return IPV4_PATTERN.matcher(s).matches();}
 
-    static File getBanLogFile()
+    static File getBanLogFile() throws IOException
     {
         if(!BANLOG_FILE.exists())
-            try
-            {
-                BANLOG_FILE.createNewFile();
-            }
-            catch(IOException e)
-            {
-                throw new RuntimeException("Failed to create file \"" + BANLOG_FILE.getAbsolutePath() + "\": " + e);
-            }
+        {
+            new File(WHITELIST_FILE.getParent()).mkdirs();
+            BANLOG_FILE.createNewFile();
+        }
         return BANLOG_FILE;
     }
 
-    static File getWhitelistFile()
+    static File getWhitelistFile() throws IOException
     {
         if(!WHITELIST_FILE.exists())
-            try
-            {
-                WHITELIST_FILE.createNewFile();
-            }
-            catch(IOException e)
-            {
-                throw new RuntimeException("Failed to create file \"" + WHITELIST_FILE.getAbsolutePath() + "\": " + e);
-            }
+        {
+            new File(WHITELIST_FILE.getParent()).mkdirs();
+            WHITELIST_FILE.createNewFile();
+        }
         return WHITELIST_FILE;
     }
 }
