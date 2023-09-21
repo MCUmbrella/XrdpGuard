@@ -29,7 +29,7 @@ public class XrdpGuard
         Set<String> whitelist = null;
         List<LoginRecord> logins;
         List<String> suspiciousIPs;
-        int bannedIpCount = 0;
+        List<String> bannedIPs = new LinkedList<>();
         parseArgs(args);
         l = setupLogger();
         l.info("XRDPGuard version " + getVersion());
@@ -93,7 +93,10 @@ public class XrdpGuard
         for(String ip : suspiciousIPs)
         {
             if(whitelist != null && whitelist.contains(ip))
+            {
+                l.fine(ip + " is in the whitelist, skip");
                 continue;
+            }
             if(ip.indexOf(':') == -1) // IPv4
             {
                 if(fw.isBannedIpv4(ip))
@@ -102,7 +105,7 @@ public class XrdpGuard
                 if(fw.banIpv4(ip))
                 {
                     l.info("Banned IPv4 address: " + ip);
-                    ++bannedIpCount;
+                    bannedIPs.add(ip);
                 }
                 else
                     l.warning("Failed to ban IPv4 address: " + ip);
@@ -115,41 +118,43 @@ public class XrdpGuard
                 if(fw.banIpv6(ip))
                 {
                     l.info("Banned IPv6 address: " + ip);
-                    ++bannedIpCount;
+                    bannedIPs.add(ip);
                 }
                 else
                     l.warning("Failed to ban IPv6 address: " + ip);
             }
         }
 
-        if(bannedIpCount != 0)
+        if(bannedIPs.size() != 0)
         {
             // 应用防火墙规则
             if(fw.apply())
+            {
                 l.fine("Firewall rule changes applied");
+                if(!flNoBanLog)
+                    // 写入被封禁IP列表到日志文件（xrdpguard/ban.log）
+                    try
+                    {
+                        FileWriter banLogWriter;
+                        banLogWriter = new FileWriter(getBanLogFile(), true);
+                        banLogWriter.write(toXGTime(System.currentTimeMillis()));
+                        banLogWriter.write('\t');
+                        banLogWriter.write(bannedIPs.toString());
+                        banLogWriter.write('\n');
+                        banLogWriter.flush();
+                        banLogWriter.close();
+                        l.fine("Ban log write success");
+                    }
+                    catch(IOException e)
+                    {
+                        l.warning("Failed to write ban log: " + e);
+                    }
+            }
             else
                 l.warning("Failed to apply firewall rule changes");
-            if(!flNoBanLog)
-                // 写入可疑IP列表到日志文件（xrdpguard/ban.log）
-                try
-                {
-                    FileWriter banLogWriter;
-                    banLogWriter = new FileWriter(getBanLogFile(), true);
-                    banLogWriter.write(toXGTime(System.currentTimeMillis()));
-                    banLogWriter.write('\t');
-                    banLogWriter.write(suspiciousIPs.toString());
-                    banLogWriter.write('\n');
-                    banLogWriter.flush();
-                    banLogWriter.close();
-                    l.fine("Ban log write success");
-                }
-                catch(IOException e)
-                {
-                    l.warning("Failed to write ban log: " + e);
-                }
         }
 
-        l.info("Completed: " + bannedIpCount + " IP(s) banned");
+        l.info("Banned (" + bannedIPs.size() + "): " + bannedIPs);
     }
 
     private static void parseArgs(String[] args)
