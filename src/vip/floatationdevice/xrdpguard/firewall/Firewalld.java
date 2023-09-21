@@ -4,7 +4,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.logging.Logger;
-import java.util.regex.Pattern;
+
+import static vip.floatationdevice.xrdpguard.XrdpGuardCommons.isIpv4;
 
 /**
  * 基于firewalld和执行系统命令实现FirewallManager接口。
@@ -12,9 +13,7 @@ import java.util.regex.Pattern;
  */
 public class Firewalld implements FirewallManager
 {
-    private static final Logger l = Logger.getLogger("XrdpGuard");
-    private static final Pattern ipv4Pattern = Pattern.compile("^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$");
-
+    private final Logger l = Logger.getLogger("XrdpGuard");
 
     public Firewalld()
     {
@@ -71,7 +70,7 @@ public class Firewalld implements FirewallManager
     }
 
     /**
-     * 使用bash执行系统命令。
+     * 使用系统默认的shell执行命令。
      * @param cmd 需要执行的命令。
      * @return 如果命令返回值为0，返回true，否则返回false。
      */
@@ -80,7 +79,7 @@ public class Firewalld implements FirewallManager
         try
         {
             l.fine("[cmd] Executing: " + cmd);
-            Process proc = new ProcessBuilder("/bin/bash", "-c", cmd).start();
+            Process proc = new ProcessBuilder("/bin/sh", "-c", cmd).start();
             BufferedReader stdout = new BufferedReader(new InputStreamReader(proc.getInputStream()));
             BufferedReader stderr = new BufferedReader(new InputStreamReader(proc.getErrorStream()));
             String output;
@@ -99,10 +98,5 @@ public class Firewalld implements FirewallManager
             e.printStackTrace();
             return false;
         }
-    }
-
-    private static boolean isIpv4(String s)
-    {
-        return ipv4Pattern.matcher(s).matches();
     }
 }
