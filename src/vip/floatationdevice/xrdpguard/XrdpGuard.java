@@ -2,10 +2,7 @@ package vip.floatationdevice.xrdpguard;
 
 import vip.floatationdevice.xrdpguard.firewall.FirewallManager;
 
-import java.io.BufferedReader;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
 import java.util.*;
 import java.util.logging.Formatter;
 import java.util.logging.*;
@@ -21,6 +18,7 @@ public class XrdpGuard
     private static boolean flDebug = false;
     private static boolean flDryRun = false;
     private static boolean flExportMode = false;
+    private static boolean flNoBanLog = false;
     private static long loopMs = -1; //TODO
 
     public static void main(String[] args)
@@ -124,13 +122,31 @@ public class XrdpGuard
             }
         }
 
-        // 应用防火墙规则
         if(bannedIpCount != 0)
         {
+            // 应用防火墙规则
             if(fw.apply())
                 l.fine("Firewall rule changes applied");
             else
                 l.warning("Failed to apply firewall rule changes");
+            if(!flNoBanLog)
+                // 写入可疑IP列表到日志文件（xrdpguard/ban.log）
+                try
+                {
+                    FileWriter banLogWriter;
+                    banLogWriter = new FileWriter(getBanLogFile(), true);
+                    banLogWriter.write(toXGTime(System.currentTimeMillis()));
+                    banLogWriter.write('\t');
+                    banLogWriter.write(suspiciousIPs.toString());
+                    banLogWriter.write('\n');
+                    banLogWriter.flush();
+                    banLogWriter.close();
+                    l.fine("Ban log write success");
+                }
+                catch(IOException e)
+                {
+                    l.warning("Failed to write ban log: " + e);
+                }
         }
 
         l.info("Completed: " + bannedIpCount + " IP(s) banned");
@@ -159,6 +175,8 @@ public class XrdpGuard
                 flDryRun = true;
             else if(a.startsWith("--export")) // 开启导出模式
                 flExportMode = true;
+            else if(a.equals("--nobanlog")) // 不写入封禁记录
+                flNoBanLog = true;
         }
     }
 

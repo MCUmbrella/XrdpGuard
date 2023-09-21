@@ -13,5 +13,6 @@ Options:
     --dryrun        Perform a dry run: only show suspicious IP(s) and do not
                     modify the firewall.
     --export        Print the extracted login records to stdout and exit.
+    --nobanlog      Do not save ban records to "xrdpguard/ban.log".
 ```
 Java 8 is required
