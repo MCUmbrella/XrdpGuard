@@ -9,6 +9,9 @@ Options:
                     an IP address is considered suspicious. (Default: 3)
     --firewall={}   Specify the firewall manager implementation class to use.
                     (Default: vip.floatationdevice.xrdpguard.firewall.Firewalld)
+    --loop={}       Specify the interval (in milliseconds) between two checks.
+                    A value less than 5000 means XRDPGaurd will check only once
+                    and then exit. (Default: -1)
     --debug         Enable debug output.
     --dryrun        Perform a dry run: only show suspicious IP(s) and do not
                     modify the firewall.

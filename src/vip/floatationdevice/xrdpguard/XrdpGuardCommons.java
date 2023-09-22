@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
 
 public class XrdpGuardCommons
 {
-    private static final String VERSION = "0.2.0";
+    private static final String VERSION = "0.3.0";
     private static final String HELP_MSG = "XRDPGuard version " + VERSION +
             "\nUsage: java -jar XrdpGuard.jar [options]\n" +
             "Options:\n" +
@@ -21,6 +21,9 @@ public class XrdpGuardCommons
             "                    an IP address is considered suspicious. (Default: 3)\n" +
             "    --firewall={}   Specify the firewall manager implementation class to use.\n" +
             "                    (Default: vip.floatationdevice.xrdpguard.firewall.Firewalld)\n" +
+            "    --loop={}       Specify the interval (in milliseconds) between two checks.\n" +
+            "                    A value less than 5000 means XRDPGaurd will check only once\n" +
+            "                    and then exit. (Default: -1)\n" +
             "    --debug         Enable debug output.\n" +
             "    --dryrun        Perform a dry run: only show suspicious IP(s) and do not\n" +
             "                    modify the firewall.\n" +

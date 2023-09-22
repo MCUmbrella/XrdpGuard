@@ -14,27 +14,30 @@ public class XrdpGuard
     private static String xrdpLogPath = "/var/log/xrdp.log"; // 默认XRDP日志路径
     private static long periodMs = 10 * 60 * 1000; // 默认时间跨度：10分钟
     private static int maxFails = 3; // 默认最多失败次数：3次
-    private static String fwClassPath = "vip.floatationdevice.xrdpguard.firewall.Firewalld";
-    private static boolean flDebug = false;
-    private static boolean flDryRun = false;
-    private static boolean flExportMode = false;
-    private static boolean flNoBanLog = false;
-    private static long loopMs = -1; //TODO
+    private static String fwClassPath = "vip.floatationdevice.xrdpguard.firewall.Firewalld"; // 默认防火墙管理器类路径
+    private static long loopMs = -1; // 默认循环检查间隔：关（>=5000ms时为开）
+    private static boolean flDebug = false; // 调试输出：关
+    private static boolean flDryRun = false; // 演练模式：关
+    private static boolean flExportMode = false; // 导出模式：关
+    private static boolean flNoBanLog = false; // 禁用保存封禁记录：关
+    private static Logger l;
+    private static FirewallManager fw;
+    ;
 
     public static void main(String[] args)
     {
         // 准备工作
-        Logger l;
-        FirewallManager fw;
-        Set<String> whitelist = null;
-        List<LoginRecord> logins;
-        List<String> suspiciousIPs;
-        List<String> bannedIPs = new LinkedList<>();
         parseArgs(args);
         l = setupLogger();
         l.info("XRDPGuard version " + getVersion());
         l.config("Enabled debug output");
-        l.config("Configurations:\n\tLog file: " + xrdpLogPath + "\n\tTime period (ms): " + periodMs + "\n\tMax fail count: " + maxFails + "\n\tFirewall manager: " + fwClassPath);
+        l.config("Configurations:" +
+                "\n\tLog file: " + xrdpLogPath +
+                "\n\tTime period (ms): " + periodMs +
+                "\n\tMax fail count: " + maxFails +
+                "\n\tFirewall manager: " + fwClassPath +
+                "\n\tLoop check interval: " + (loopMs < 5000 ? "OFF" : loopMs)
+        );
         // 创建防火墙管理器类的实例
         try
         {
@@ -45,116 +48,24 @@ public class XrdpGuard
             throw new RuntimeException("Failed to create instance of \"" + fwClassPath + "\": " + e, e);
         }
 
-        // 读取IP白名单（xrdpguard/whitelist.txt）
-        l.fine("Reading whitelist");
+        // 进入主循环
         try
         {
-            whitelist = loadWhitelist();
-            l.fine("Whitelist (" + whitelist.size() + "): " + whitelist);
-        }
-        catch(Exception e)
-        {
-            l.warning("Failed to load whitelist: " + e);
-        }
-
-        // 开始逐行读取日志
-        l.fine("Reading " + xrdpLogPath);
-        logins = loadXrdpLog(xrdpLogPath);
-        l.fine("Read " + logins.size() + " login records");
-
-        // 如果是导出模式，将日志中提取出的登录记录打印到标准输出后退出
-        if(flExportMode)
-        {
-            l.info("Exporting login records to stdout");
-            StringBuilder sb = new StringBuilder();
-            for(LoginRecord login : logins)
-                sb.append(login.toString()).append('\n');
-            System.out.print(sb);
-            l.info("Exported " + logins.size() + " records");
-            System.exit(0);
-        }
-
-        // 检查可疑IP并输出
-        long nowMs = System.currentTimeMillis();
-        l.fine("Checking suspicious IPs");
-        l.fine("Check from " + toXGTime(nowMs - periodMs) + " to " + toXGTime(nowMs));
-        suspiciousIPs = checkSuspiciousIps(logins, nowMs, periodMs);
-        l.info("Suspicious IPs (" + suspiciousIPs.size() + "): " + suspiciousIPs);
-
-        // 如果是演练模式，输出可疑IP后退出
-        if(flDryRun)
-        {
-            l.info("Dry run completed");
-            System.exit(0);
-        }
-
-        // 使用实现FirewallManager接口的类来封禁IP
-        // 注意：IP可能同时包含IPv4和IPv6，需要分别处理
-        for(String ip : suspiciousIPs)
-        {
-            if(whitelist != null && whitelist.contains(ip))
+            long loopStart;
+            while(true)
             {
-                l.fine(ip + " is in the whitelist, skip");
-                continue;
-            }
-            if(ip.indexOf(':') == -1) // IPv4
-            {
-                if(fw.isBannedIpv4(ip))
-                    continue;
-                l.fine("Ban IPv4 " + ip);
-                if(fw.banIpv4(ip))
-                {
-                    l.info("Banned IPv4 address: " + ip);
-                    bannedIPs.add(ip);
-                }
-                else
-                    l.warning("Failed to ban IPv4 address: " + ip);
-            }
-            else // IPv6
-            {
-                if(fw.isBannedIpv6(ip))
-                    continue;
-                l.fine("Ban IPv6 " + ip);
-                if(fw.banIpv6(ip))
-                {
-                    l.info("Banned IPv6 address: " + ip);
-                    bannedIPs.add(ip);
-                }
-                else
-                    l.warning("Failed to ban IPv6 address: " + ip);
+                loopStart = System.currentTimeMillis();
+                mainLoop();
+                if(loopMs < 5000) // 如果循环检查间隔小于5秒或未设置，只运行一次
+                    return;
+                l.fine("Sleeping for " + loopMs + " ms");
+                Thread.sleep(loopMs - (System.currentTimeMillis() - loopStart));
             }
         }
-
-        if(bannedIPs.size() != 0)
+        catch(InterruptedException e)
         {
-            // 应用防火墙规则
-            if(fw.apply())
-            {
-                l.fine("Firewall rule changes applied");
-                if(!flNoBanLog)
-                    // 写入被封禁IP列表到日志文件（xrdpguard/ban.log）
-                    try
-                    {
-                        FileWriter banLogWriter;
-                        banLogWriter = new FileWriter(getBanLogFile(), true);
-                        banLogWriter.write(toXGTime(System.currentTimeMillis()));
-                        banLogWriter.write('\t');
-                        banLogWriter.write(bannedIPs.toString());
-                        banLogWriter.write('\n');
-                        banLogWriter.flush();
-                        banLogWriter.close();
-                        l.fine("Ban log write success");
-                    }
-                    catch(IOException e)
-                    {
-                        l.warning("Failed to write ban log: " + e);
-                    }
-            }
-            else
-                l.warning("Failed to apply firewall rule changes");
+            throw new RuntimeException("Main loop interrupted: " + e, e);
         }
-
-        l.info("Banned (" + bannedIPs.size() + "): " + bannedIPs);
     }
 
     private static void parseArgs(String[] args)
@@ -174,6 +85,8 @@ public class XrdpGuard
                 maxFails = Integer.parseInt(a.substring(10));
             else if(a.startsWith("--firewall=")) // 设置要使用的防火墙管理器类的路径
                 fwClassPath = a.substring(11);
+            else if(a.startsWith("--loop=")) // 两次检查的间隔（毫秒，少于5000则不进行循环）
+                loopMs = Long.parseLong(a.substring(7));
             else if(a.equals("--debug")) // 开启调试输出
                 flDebug = true;
             else if(a.startsWith("--dryrun")) // 开启演练模式
@@ -300,5 +213,125 @@ public class XrdpGuard
             if(entry.getValue() >= maxFails)
                 suspiciousIPs.add(entry.getKey());
         return suspiciousIPs;
+    }
+
+    private static void mainLoop()
+    {
+        Set<String> whitelist = null;
+        List<LoginRecord> logins;
+        List<String> suspiciousIPs;
+        List<String> bannedIPs;
+
+        // 读取IP白名单（xrdpguard/whitelist.txt）
+        l.fine("Reading whitelist");
+        try
+        {
+            whitelist = loadWhitelist();
+            l.fine("Whitelist (" + whitelist.size() + "): " + whitelist);
+        }
+        catch(Exception e)
+        {
+            l.warning("Failed to load whitelist: " + e);
+        }
+
+        // 开始逐行读取日志
+        l.fine("Reading " + xrdpLogPath);
+        logins = loadXrdpLog(xrdpLogPath);
+        l.fine("Read " + logins.size() + " login records");
+
+        // 如果是导出模式，将日志中提取出的登录记录打印到标准输出后退出
+        if(flExportMode)
+        {
+            l.info("Exporting login records to stdout");
+            StringBuilder sb = new StringBuilder();
+            for(LoginRecord login : logins)
+                sb.append(login.toString()).append('\n');
+            System.out.print(sb);
+            l.info("Exported " + logins.size() + " records");
+            System.exit(0);
+        }
+
+        // 检查可疑IP并输出
+        long nowMs = System.currentTimeMillis();
+        l.fine("Checking suspicious IPs");
+        l.fine("Check from " + toXGTime(nowMs - periodMs) + " to " + toXGTime(nowMs));
+        suspiciousIPs = checkSuspiciousIps(logins, nowMs, periodMs);
+        l.info("Suspicious IPs (" + suspiciousIPs.size() + "): " + suspiciousIPs);
+
+        // 如果是演练模式，输出可疑IP后退出
+        if(flDryRun)
+        {
+            l.info("Dry run completed");
+            return;
+        }
+
+        // 使用实现FirewallManager接口的类来封禁IP
+        // 注意：IP可能同时包含IPv4和IPv6，需要分别处理
+        bannedIPs = new LinkedList<>();
+        for(String ip : suspiciousIPs)
+        {
+            if(whitelist != null && whitelist.contains(ip))
+            {
+                l.fine(ip + " is in the whitelist, skip");
+                continue;
+            }
+            if(ip.indexOf(':') == -1) // IPv4
+            {
+                if(fw.isBannedIpv4(ip))
+                    continue;
+                l.fine("Ban IPv4 " + ip);
+                if(fw.banIpv4(ip))
+                {
+                    l.info("Banned IPv4 address: " + ip);
+                    bannedIPs.add(ip);
+                }
+                else
+                    l.warning("Failed to ban IPv4 address: " + ip);
+            }
+            else // IPv6
+            {
+                if(fw.isBannedIpv6(ip))
+                    continue;
+                l.fine("Ban IPv6 " + ip);
+                if(fw.banIpv6(ip))
+                {
+                    l.info("Banned IPv6 address: " + ip);
+                    bannedIPs.add(ip);
+                }
+                else
+                    l.warning("Failed to ban IPv6 address: " + ip);
+            }
+        }
+
+        if(bannedIPs.size() != 0)
+        {
+            // 应用防火墙规则
+            if(fw.apply())
+            {
+                l.fine("Firewall rule changes applied");
+                if(!flNoBanLog)
+                    // 写入被封禁IP列表到日志文件（xrdpguard/ban.log）
+                    try
+                    {
+                        FileWriter banLogWriter;
+                        banLogWriter = new FileWriter(getBanLogFile(), true);
+                        banLogWriter.write(toXGTime(System.currentTimeMillis()));
+                        banLogWriter.write('\t');
+                        banLogWriter.write(bannedIPs.toString());
+                        banLogWriter.write('\n');
+                        banLogWriter.flush();
+                        banLogWriter.close();
+                        l.fine("Ban log write success");
+                    }
+                    catch(IOException e)
+                    {
+                        l.warning("Failed to write ban log: " + e);
+                    }
+            }
+            else
+                l.warning("Failed to apply firewall rule changes");
+        }
+
+        l.info("Banned (" + bannedIPs.size() + "): " + bannedIPs);
     }
 }
