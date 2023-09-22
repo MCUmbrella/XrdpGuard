@@ -22,7 +22,6 @@ public class XrdpGuard
     private static boolean flNoBanLog = false; // 禁用保存封禁记录：关
     private static Logger l;
     private static FirewallManager fw;
-    ;
 
     public static void main(String[] args)
     {
@@ -309,6 +308,7 @@ public class XrdpGuard
             if(fw.apply())
             {
                 l.fine("Firewall rule changes applied");
+                l.info("Banned IPs (" + bannedIPs.size() + "): " + bannedIPs);
                 if(!flNoBanLog)
                     // 写入被封禁IP列表到日志文件（xrdpguard/ban.log）
                     try
@@ -331,7 +331,5 @@ public class XrdpGuard
             else
                 l.warning("Failed to apply firewall rule changes");
         }
-
-        l.info("Banned (" + bannedIPs.size() + "): " + bannedIPs);
     }
 }
