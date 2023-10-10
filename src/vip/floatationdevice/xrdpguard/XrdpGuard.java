@@ -12,6 +12,8 @@ import static vip.floatationdevice.xrdpguard.XrdpGuardCommons.*;
 public class XrdpGuard
 {
     private static String xrdpLogPath = "/var/log/xrdp.log"; // 默认XRDP日志路径
+    private static String banLogPath = "xrdpguard/ban.log"; // 默认封禁记录路径
+    private static String whitelistPath = "xrdpguard/whitelist.txt"; // 默认IP白名单路径
     private static long periodMs = 10 * 60 * 1000; // 默认时间跨度：10分钟
     private static int maxFails = 3; // 默认最多失败次数：3次
     private static String fwClassPath = "vip.floatationdevice.xrdpguard.firewall.Firewalld"; // 默认防火墙管理器类路径
@@ -31,7 +33,9 @@ public class XrdpGuard
         l.info("XRDPGuard version " + getVersion());
         l.config("Enabled debug output");
         l.config("Configurations:" +
-                "\n\tLog file: " + xrdpLogPath +
+                "\n\tXRDP log: " + xrdpLogPath +
+                "\n\tBan log: " + banLogPath +
+                "\n\tWhitelist: " + whitelistPath +
                 "\n\tTime period (ms): " + periodMs +
                 "\n\tMax fail count: " + maxFails +
                 "\n\tFirewall manager: " + fwClassPath +
@@ -78,6 +82,10 @@ public class XrdpGuard
             }
             else if(a.startsWith("--log=")) // 指定XRDP日志的路径
                 xrdpLogPath = a.substring(6);
+            else if(a.startsWith("--banlog=")) // 指定封禁记录路径
+                banLogPath = a.substring(9);
+            else if(a.startsWith("--whitelist=")) // 指定白名单路径
+                whitelistPath = a.substring(12);
             else if(a.startsWith("--period=")) // 设置时间范围（毫秒）
                 periodMs = Long.parseLong(a.substring(9));
             else if(a.startsWith("--maxfail=")) // 设置时间范围内允许的最大登录失败次数
@@ -119,10 +127,10 @@ public class XrdpGuard
         return l;
     }
 
-    private static Set<String> loadWhitelist() throws IOException
+    private static Set<String> parseWhitelist(String path) throws IOException
     {
         Set<String> whitelist = new HashSet<>();
-        BufferedReader br = new BufferedReader(new FileReader(getWhitelistFile()));
+        BufferedReader br = new BufferedReader(new FileReader(getFileOrCreate(path)));
         String line;
         while((line = br.readLine()) != null)
             whitelist.add(line);
@@ -214,6 +222,17 @@ public class XrdpGuard
         return suspiciousIPs;
     }
 
+    private static File getFileOrCreate(String path) throws IOException
+    {
+        File f = new File(path);
+        if(!f.exists())
+        {
+            new File(f.getParent()).mkdirs();
+            f.createNewFile();
+        }
+        return f;
+    }
+
     private static void mainLoop()
     {
         Set<String> whitelist = null;
@@ -221,11 +240,11 @@ public class XrdpGuard
         List<String> suspiciousIPs;
         List<String> bannedIPs;
 
-        // 读取IP白名单（xrdpguard/whitelist.txt）
+        // 读取IP白名单
         l.fine("Reading whitelist");
         try
         {
-            whitelist = loadWhitelist();
+            whitelist = parseWhitelist(whitelistPath);
             l.fine("Whitelist (" + whitelist.size() + "): " + whitelist);
         }
         catch(Exception e)
@@ -285,7 +304,7 @@ public class XrdpGuard
                     bannedIPs.add(ip);
                 }
                 else
-                    l.warning("Failed to ban IPv4 address: " + ip);
+                    l.severe("Failed to ban IPv4 address: " + ip);
             }
             else // IPv6
             {
@@ -298,7 +317,7 @@ public class XrdpGuard
                     bannedIPs.add(ip);
                 }
                 else
-                    l.warning("Failed to ban IPv6 address: " + ip);
+                    l.severe("Failed to ban IPv6 address: " + ip);
             }
         }
 
@@ -309,27 +328,31 @@ public class XrdpGuard
             {
                 l.fine("Firewall rule changes applied");
                 l.info("Banned IPs (" + bannedIPs.size() + "): " + bannedIPs);
-                if(!flNoBanLog)
-                    // 写入被封禁IP列表到日志文件（xrdpguard/ban.log）
-                    try
-                    {
-                        FileWriter banLogWriter;
-                        banLogWriter = new FileWriter(getBanLogFile(), true);
-                        banLogWriter.write(toXGTime(System.currentTimeMillis()));
-                        banLogWriter.write('\t');
-                        banLogWriter.write(bannedIPs.toString());
-                        banLogWriter.write('\n');
-                        banLogWriter.flush();
-                        banLogWriter.close();
-                        l.fine("Ban log write success");
-                    }
-                    catch(IOException e)
-                    {
-                        l.warning("Failed to write ban log: " + e);
-                    }
+                if(flNoBanLog)
+                {
+                    l.fine("Ban log will not be saved");
+                    return;
+                }
+                // 写入被封禁IP列表到日志文件
+                try
+                {
+                    FileWriter banLogWriter;
+                    banLogWriter = new FileWriter(getFileOrCreate(banLogPath), true);
+                    banLogWriter.write(toXGTime(System.currentTimeMillis()));
+                    banLogWriter.write('\t');
+                    banLogWriter.write(bannedIPs.toString());
+                    banLogWriter.write('\n');
+                    banLogWriter.flush();
+                    banLogWriter.close();
+                    l.fine("Ban log write success");
+                }
+                catch(IOException e)
+                {
+                    l.severe("Failed to write ban log: " + e);
+                }
             }
             else
-                l.warning("Failed to apply firewall rule changes");
+                l.severe("Failed to apply firewall rule changes. Run XRDPGuard with \"--debug\" argument to see more information");
         }
     }
 }

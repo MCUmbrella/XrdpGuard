@@ -1,7 +1,5 @@
 package vip.floatationdevice.xrdpguard;
 
-import java.io.File;
-import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -9,12 +7,16 @@ import java.util.regex.Pattern;
 
 public class XrdpGuardCommons
 {
-    private static final String VERSION = "0.3.0";
+    private static final String VERSION = "0.4.0";
     private static final String HELP_MSG = "XRDPGuard version " + VERSION +
             "\nUsage: java -jar XrdpGuard.jar [options]\n" +
             "Options:\n" +
             "    --help          Show the help message and exit.\n" +
             "    --log={}        Specify the path of XRDP log. (Default: /var/log/xrdp.log)\n" +
+            "    --banlog={}     Specify the path to save the ban log file.\n" +
+            "                    (Default: xrdpguard/ban.log)\n" +
+            "    --whitelist={}  Specify the path to load the IP whitelist file.\n" +
+            "                    (Default: xrdpguard/whitelist.txt)\n" +
             "    --period={}     Specify the time period (in milliseconds) to consider for\n" +
             "                    login failures. (Default: 10 minutes)\n" +
             "    --maxfail={}    Specify the maximum number of login failures allowed before\n" +
@@ -31,8 +33,6 @@ public class XrdpGuardCommons
             "    --nobanlog      Do not save ban records to \"xrdpguard/ban.log\".";
     private static final SimpleDateFormat XRDP_TIME_FMT = new SimpleDateFormat("yyyyMMdd-HH:mm:ss");
     private static final SimpleDateFormat XG_TIME_FMT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
-    private static final File BANLOG_FILE = new File("xrdpguard", "ban.log");
-    private static final File WHITELIST_FILE = new File("xrdpguard", "whitelist.txt");
     private static final Pattern IPV4_PATTERN = Pattern.compile("^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$");
 
     public static String getVersion(){return VERSION;}
@@ -84,24 +84,4 @@ public class XrdpGuardCommons
     }
 
     public static boolean isIpv4(String s){return IPV4_PATTERN.matcher(s).matches();}
-
-    static File getBanLogFile() throws IOException
-    {
-        if(!BANLOG_FILE.exists())
-        {
-            new File(WHITELIST_FILE.getParent()).mkdirs();
-            BANLOG_FILE.createNewFile();
-        }
-        return BANLOG_FILE;
-    }
-
-    static File getWhitelistFile() throws IOException
-    {
-        if(!WHITELIST_FILE.exists())
-        {
-            new File(WHITELIST_FILE.getParent()).mkdirs();
-            WHITELIST_FILE.createNewFile();
-        }
-        return WHITELIST_FILE;
-    }
 }
